@@ -1,0 +1,7 @@
+origen,destino,peso
+A,B,10.0
+B,C,5.0
+A,C,20.0
+C,D,8.0
+F,A,15.0
+D,E,12.0
