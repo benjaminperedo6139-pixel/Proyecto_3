@@ -1,16 +1,16 @@
 """
-Proyecto 2 - Dijkstra
-Interfaz visual creada con Streamlit.
-Utiliza grafo.py para Dijkstra e io_handler.py para validar
-y guardar las conexiones en el archivo CSV.
+Titulo: Proyecto 4 - Persistencia relacional con SQLite
+Nombre completo: Benjamín Peredo Alonso
+Descripcion: Interfaz visual creada con Streamlit. Usa grafos.py para
+             Dijkstra y db_handler.py para guardar y leer las conexiones.
 """
 
 import matplotlib.pyplot as plt
 import networkx as nx
 import streamlit as st
 
-import io_handler
-from grafo import Grafo
+import db_handler
+from grafos import Grafo
 
 
 # ---------------------------------------------------------
@@ -29,28 +29,33 @@ st.set_page_config(
 # Funciones para cargar y mostrar información
 # ---------------------------------------------------------
 
-def cargar_grafo() -> Grafo:
-    """Carga las conexiones guardadas en el CSV."""
+def sincronizar_datos() -> None:
+    """Lee la base de datos y guarda el grafo en st.session_state."""
+
+    conexiones = db_handler.leer_conexiones()
+
     grafo = Grafo()
+    grafo.cargar_conexiones(conexiones)
 
-    if io_handler.leer_csv():
-        grafo.cargar_csv(io_handler.RUTA_CSV)
-
-    return grafo
+    st.session_state["conexiones"] = conexiones
+    st.session_state["grafo"] = grafo
 
 
-def leer_conexiones() -> list[dict[str, str | float]]:
+def preparar_tabla(
+    conexiones: list[dict[str, str | float]]
+) -> list[dict[str, str | float]]:
     """Prepara las conexiones para mostrarlas en la tabla."""
-    conexiones = []
 
-    for fila in io_handler.leer_csv():
-        conexiones.append({
+    tabla = []
+
+    for fila in conexiones:
+        tabla.append({
             "Origen": fila["origen"],
             "Destino": fila["destino"],
             "Peso": fila["peso"],
         })
 
-    return conexiones
+    return tabla
 
 
 def crear_grafo_visual(grafo: Grafo):
@@ -215,21 +220,26 @@ with st.sidebar:
     )
 
     st.divider()
-    st.caption("Proyecto 2 de Programación 3")
-    st.caption("Algoritmo de Dijkstra")
+    st.caption("Proyecto 4 de Programación 3")
+    st.caption("Algoritmo de Dijkstra con SQLite")
     st.caption("Benjamín Peredo Alonso")
 
 
 # ---------------------------------------------------------
-# Cargar datos
+# Cargar datos (solo la primera vez que se abre la página)
 # ---------------------------------------------------------
 
-try:
-    grafo = cargar_grafo()
-    conexiones = leer_conexiones()
-except (FileNotFoundError, PermissionError, ValueError, KeyError) as error:
-    st.error(f"No se pudieron cargar los datos: {error}")
-    st.stop()
+if "grafo" not in st.session_state:
+    try:
+        sincronizar_datos()
+    except RuntimeError as error:
+        st.error(f"No se pudo abrir la base de datos: {error}")
+        st.stop()
+    except ValueError as error:
+        st.error(f"Los datos guardados no son válidos: {error}")
+        st.stop()
+
+grafo: Grafo = st.session_state["grafo"]
 
 
 # ---------------------------------------------------------
@@ -255,13 +265,18 @@ if seccion == "Inicio":
 
         if grafo.nodos:
             figura = crear_grafo_visual(grafo)
-            st.pyplot(figura, use_container_width=True)
+            st.pyplot(figura, width="stretch")
             plt.close(figura)
         else:
-            st.info("Todavía no hay conexiones. Agrega algunas para visualizar la red.")
+            st.info(
+                "Todavía no hay conexiones. "
+                "Agrega algunas para visualizar la red."
+            )
 
     with columna_busqueda:
         st.subheader("🔎 Buscar ruta")
+
+        # Los selectores se llenan con los nodos que están en memoria.
         nodos_disponibles = sorted(grafo.nodos)
 
         if len(nodos_disponibles) >= 2:
@@ -285,7 +300,7 @@ if seccion == "Inicio":
             if st.button(
                 "Encontrar ruta",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             ):
                 try:
                     distancia, camino = grafo.dijkstra(inicio, destino)
@@ -302,22 +317,27 @@ if seccion == "Inicio":
                         st.warning("No existe una ruta entre esos nodos.")
                 except ValueError as error:
                     st.error(str(error))
+                except KeyError as error:
+                    st.error(f"El nodo {error} no está en el grafo.")
         else:
             st.info("Necesitas al menos dos nodos para buscar una ruta.")
 
         resultado = st.session_state.get("resultado_ruta")
 
         if resultado:
+            ruta = " → ".join(resultado["camino"])
             st.markdown(
                 f"""
                 <div class="route-card">
                     <div class="route-title">✓ Ruta encontrada</div>
                     <div class="route-path">
-                        Ruta más corta: {' → '.join(resultado['camino'])}
+                        Ruta más corta: {ruta}
                     </div>
                     <div style="margin-top:8px;color:#ded9ed;">
                         Costo total:
-                        <span class="route-cost">{resultado['distancia']:g}</span>
+                        <span class="route-cost">
+                            {resultado['distancia']:g}
+                        </span>
                     </div>
                 </div>
                 """,
@@ -329,10 +349,10 @@ if seccion == "Inicio":
 
     with columna_tabla:
         st.subheader("📋 Conexiones en la red")
-        if conexiones:
+        if st.session_state["conexiones"]:
             st.dataframe(
-                conexiones,
-                use_container_width=True,
+                preparar_tabla(st.session_state["conexiones"]),
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -358,7 +378,8 @@ if seccion == "Inicio":
 elif seccion == "Agregar conexiones":
     st.title("Agregar conexiones")
     st.markdown(
-        '<p class="subtitle">Registra nuevos caminos en la red de transporte.</p>',
+        '<p class="subtitle">'
+        "Registra nuevos caminos en la red de transporte.</p>",
         unsafe_allow_html=True,
     )
 
@@ -378,46 +399,42 @@ elif seccion == "Agregar conexiones":
             )
 
         with col_peso:
-            peso_texto = st.text_input("Peso de la conexión")
+            peso = st.number_input(
+                "Peso de la conexión",
+                min_value=0.1,
+                value=1.0,
+                step=1.0,
+            )
 
         enviar = st.form_submit_button(
             "Guardar conexión",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         )
 
     if enviar:
         try:
-            # Se reutilizan las validaciones de io_handler.py.
-            origen = io_handler.validar_nodo(origen_texto)
-            destino = io_handler.validar_nodo(destino_texto)
-            peso = io_handler.validar_peso(peso_texto)
+            # db_handler limpia, valida y guarda la conexión.
+            db_handler.guardar_conexion(origen_texto, destino_texto, peso)
 
-            if origen == destino:
-                raise ValueError("Un nodo no puede conectarse consigo mismo.")
+            # Después de cambiar la base, se actualiza la memoria.
+            sincronizar_datos()
+            grafo = st.session_state["grafo"]
 
-            # Primero se comprueba que la conexión se pueda agregar al grafo.
-            grafo.agregar_conexion(origen, destino, peso)
-
-            # Después se guarda usando la función de io_handler.py.
-            nueva_conexion = [{
-                "origen": origen,
-                "destino": destino,
-                "peso": peso,
-            }]
-            io_handler.guardar_csv(nueva_conexion)
-
-            st.success(f"Conexión {origen} — {destino} guardada correctamente.")
-            st.rerun()
+            st.success("Conexión guardada correctamente.")
 
         except ValueError as error:
+            st.warning(str(error))
+        except RuntimeError as error:
             st.error(str(error))
-        except (PermissionError, OSError) as error:
-            st.error(f"No se pudo guardar el archivo CSV: {error}")
 
     st.subheader("Conexiones registradas")
-    if conexiones:
-        st.dataframe(conexiones, use_container_width=True, hide_index=True)
+    if st.session_state["conexiones"]:
+        st.dataframe(
+            preparar_tabla(st.session_state["conexiones"]),
+            width="stretch",
+            hide_index=True,
+        )
     else:
         st.info("Todavía no hay conexiones registradas.")
 
@@ -429,34 +446,36 @@ elif seccion == "Agregar conexiones":
 elif seccion == "Ver datos":
     st.title("Datos de la red")
     st.markdown(
-        '<p class="subtitle">Consulta los nodos y las conexiones almacenadas.</p>',
+        '<p class="subtitle">'
+        "Consulta los nodos y las conexiones almacenadas.</p>",
         unsafe_allow_html=True,
     )
 
     metrica_nodos, metrica_conexiones = st.columns(2)
     metrica_nodos.metric("Nodos registrados", len(grafo.nodos))
-    metrica_conexiones.metric("Conexiones registradas", len(conexiones))
+    metrica_conexiones.metric(
+        "Conexiones registradas",
+        len(st.session_state["conexiones"]),
+    )
 
-    st.subheader("Archivo Nodos.csv")
-    if conexiones:
-        st.dataframe(conexiones, use_container_width=True, hide_index=True)
-
-        with open(io_handler.RUTA_CSV, "rb") as archivo:
-            contenido_csv = archivo.read()
-
-        st.download_button(
-            "Descargar CSV",
-            data=contenido_csv,
-            file_name="Nodos.csv",
-            mime="text/csv",
+    st.subheader("Base de datos nodos.db")
+    if st.session_state["conexiones"]:
+        st.dataframe(
+            preparar_tabla(st.session_state["conexiones"]),
+            width="stretch",
+            hide_index=True,
+        )
+        st.caption(
+            "Los datos se guardan en SQLite y se pueden revisar "
+            "abriendo nodos.db con DBeaver."
         )
     else:
-        st.info("El archivo todavía no contiene conexiones.")
+        st.info("La base de datos todavía no contiene conexiones.")
 
     st.subheader("Visualización de la red")
     if grafo.nodos:
         figura = crear_grafo_visual(grafo)
-        st.pyplot(figura, use_container_width=True)
+        st.pyplot(figura, width="stretch")
         plt.close(figura)
 
 
@@ -468,7 +487,7 @@ elif seccion == "Acerca de":
     st.title("Acerca del proyecto")
     st.markdown(
         """
-        ### Proyecto 2 - Programación 3
+        ### Proyecto 4 - Programación 3
 
         Esta aplicación permite administrar una red de transporte y encontrar
         rutas de menor costo mediante el algoritmo de Dijkstra.
@@ -476,14 +495,15 @@ elif seccion == "Acerca de":
         **Funciones principales:**
         - Registrar nodos y conexiones.
         - Asignar un peso a cada conexión.
-        - Guardar los datos en un archivo CSV.
+        - Guardar los datos en una base de datos SQLite.
         - Consultar las conexiones existentes.
         - Encontrar la ruta más corta entre dos nodos.
 
         **Tecnologías utilizadas:**
         - Python
         - Streamlit
-        - CSV
+        - SQLite
+        - DBeaver
         - Algoritmo de Dijkstra
         """
     )
