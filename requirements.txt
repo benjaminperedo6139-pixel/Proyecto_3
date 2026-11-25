@@ -1,0 +1,14 @@
+# Librerías necesarias para ejecutar la aplicación
+# Instalar con: pip install -r requirements.txt
+
+# Crea la interfaz web: menú, formularios, selectores, tablas y mensajes
+streamlit==1.67.0
+
+# Construye el grafo para dibujarlo y acomoda los nodos en pantalla
+networkx==3.7
+
+# Dibuja la figura del grafo que se muestra en la aplicación
+matplotlib==3.11.2
+
+# Herramienta de revisión de estilo PEP 8 (no la usa la app al ejecutarse)
+flake8==7.5.0
