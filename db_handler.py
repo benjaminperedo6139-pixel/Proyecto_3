@@ -155,4 +155,3 @@ def leer_conexiones() -> list[dict[str, str | float]]:
         })
 
     return conexiones
-
