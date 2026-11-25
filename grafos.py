@@ -1,11 +1,9 @@
-
 """
-Titulo: Buenas prácticas
+Titulo: Proyecto 4 - Persistencia relacional con SQLite
 Nombre completo: Benjamín Peredo Alonso
 Descripcion: Manejo de nodos, conexiones y algoritmo de Dijkstra.
+             No depende de cómo se guardan los datos.
 """
-
-import csv
 
 
 class Nodo:
@@ -48,23 +46,17 @@ class Grafo:
         self.nodos[origen].vecinos[destino] = peso
         self.nodos[destino].vecinos[origen] = peso
 
-    def cargar_csv(self, ruta: str) -> None:
-        """Lee las conexiones guardadas en el archivo CSV."""
+    def cargar_conexiones(
+        self, conexiones: list[dict[str, str | float]]
+    ) -> None:
+        """Arma el grafo a partir de una lista de conexiones."""
 
-        with open(ruta, mode="r", encoding="utf-8") as archivo:
-            lector = csv.DictReader(archivo)
-
-            columnas = {"origen", "destino", "peso"}
-
-            if not columnas.issubset(lector.fieldnames or []):
-                raise ValueError("El CSV no tiene las columnas necesarias.")
-
-            for fila in lector:
-                origen = fila["origen"].strip().upper()
-                destino = fila["destino"].strip().upper()
-                peso = float(fila["peso"])
-
-                self.agregar_conexion(origen, destino, peso)
+        for conexion in conexiones:
+            self.agregar_conexion(
+                str(conexion["origen"]),
+                str(conexion["destino"]),
+                float(conexion["peso"]),
+            )
 
     def dijkstra(
         self, inicio: str, destino: str
